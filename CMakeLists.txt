@@ -4,8 +4,10 @@ project(mini_fs)
 
 set(SOURCE_EXE main.c)
 
-set(LIB_API api.c)
-set(LIB_FS fs.c)
+set(LIB_API src/api.c)
+set(LIB_FS src/fs.c)
+
+include_directories(headers)
 
 add_library(fs STATIC ${LIB_FS})
 add_library(api STATIC ${LIB_API})
