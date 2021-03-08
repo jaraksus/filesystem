@@ -1,5 +1,6 @@
 #include "fs.h"
 
+#include <stdio.h>
 #include <sys/types.h>
 #include <unistd.h>
 #include <stdlib.h>
@@ -65,6 +66,12 @@ void read_block(void* buf, int block_id, int image_fd) {
     read_all(image_fd, buf, BLOCK_SIZE);
 }
 
+void read_block_by_inode_id(void* buf, int inode_id, int block_ind, int image_fd) {
+    inode node;
+    get_inode(&node, inode_id, image_fd);
+    read_block(buf, node.blocks[block_ind], image_fd);
+}
+
 int init_inode(bool dir, int image_fd) {
     for (int i = 0; i < INODE_NUM; ++i) {
         if (inodes_mask[i] == false) {
@@ -87,7 +94,6 @@ int init_inode(bool dir, int image_fd) {
 
             move_to_inode(image_fd, i);
             write_all(image_fd, &node, sizeof(inode));
-
             return i;
         }
     }
@@ -158,7 +164,7 @@ int find_inode_id(char* path, int image_fd) {
     return inode_id;
 }
 
-void write_to_block(int block_id, int offset, char* buf, int count, int image_fd) {
+void write_to_block(int block_id, int offset, void* buf, int count, int image_fd) {
     move(image_fd, INODE_NUM * sizeof(inode) + block_id * BLOCK_SIZE + offset);
     write_all(image_fd, buf, count);
 }
@@ -167,8 +173,8 @@ void write_by_inode_id(int inode_id, void* buf, int count, int image_fd) {
     inode node;
     get_inode(&node, inode_id, image_fd);
 
-    int block_ind = (node.size + BLOCK_SIZE - 1) / BLOCK_SIZE;
-    int block_rem = BLOCK_SIZE - (node.size - BLOCK_SIZE * block_ind);
+    int block_ind = node.size / BLOCK_SIZE;
+    int block_rem = BLOCK_SIZE - (node.size % BLOCK_SIZE);
 
     int total_wrote = 0;
     while (total_wrote < count) {
@@ -188,7 +194,94 @@ void write_by_inode_id(int inode_id, void* buf, int count, int image_fd) {
     save_inode(&node, inode_id, image_fd);
 }
 
-// *************************************************************
+void make_free(int inode_id, int parent_inode_id, int image_fd) {
+    inode node;
+    get_inode(&node, inode_id, image_fd);
+
+    char buffer[BLOCK_SIZE];
+
+    // Recursive delete strategy
+    if (node.dir) {
+        int total_read = 0;
+        int block_ind = 0;
+        catalog_record record;
+        while (total_read < node.size) {
+            read_block_by_inode_id(buffer, inode_id, block_ind, image_fd);
+
+            int current_read = 0;
+            while (total_read < node.size && current_read < BLOCK_SIZE) {
+                memcpy(&record, buffer + current_read, sizeof(catalog_record));
+                total_read += sizeof(catalog_record);
+                current_read += sizeof(catalog_record);
+
+                if (record.inode_id != parent_inode_id) {
+                    make_free(record.inode_id, inode_id, image_fd);
+                }
+            }
+
+            block_ind++;
+        }
+    }
+
+    // Deleting from parent record
+    inode parent_node;
+    get_inode(&parent_node, parent_inode_id, image_fd);
+
+    catalog_record last_record;
+    int last_block_ind = parent_node.size / BLOCK_SIZE;
+    int last_block_offset = parent_node.size % BLOCK_SIZE;
+    if (last_block_offset == 0) {
+        read_block_by_inode_id(buffer, parent_inode_id, last_block_ind - 1, image_fd);
+        memcpy(&last_record, buffer + (BLOCK_SIZE - sizeof(catalog_record)), sizeof(catalog_record));
+    } else {
+        read_block_by_inode_id(buffer, parent_inode_id, last_block_ind, image_fd);
+        memcpy(&last_record, buffer + (last_block_offset - sizeof(catalog_record)), sizeof(catalog_record));
+    }
+
+    if (last_record.inode_id != inode_id) {
+        int total_read = 0;
+        int block_ind = 0;
+        bool found = false;
+        catalog_record record;
+        while (total_read < parent_node.size && !found) {
+            read_block_by_inode_id(buffer, parent_inode_id, block_ind, image_fd);
+
+            int current_read = 0;
+            while (total_read < parent_node.size && current_read < BLOCK_SIZE) {
+                memcpy(&record, buffer + current_read, sizeof(catalog_record));
+
+                if (record.inode_id == inode_id) {
+                    write_to_block(
+                        parent_node.blocks[block_ind], current_read, &last_record, sizeof(catalog_record), image_fd
+                    );
+
+                    found = true;
+                    break;
+                }
+
+                total_read += sizeof(catalog_record);
+                current_read += sizeof(catalog_record);
+            }
+
+            block_ind++;
+        }
+
+        if (!found) {
+            printf("Something going wrong. Can't find inode to delte in parent directory\n");
+        }
+    }
+
+    parent_node.size -= sizeof(catalog_record);
+    save_inode(&parent_node, parent_inode_id, image_fd);
+
+
+    for (int i = 0; i < 14; ++i) {
+        blocks_mask[node.blocks[i]] = false;
+    }
+    inodes_mask[inode_id] = false;
+}
+
+// *******************************************************************
 
 void prepare_image(int image_fd) {
     int fs_size = INODE_NUM * sizeof(inode) + BLOCK_SIZE * BLOCK_NUM;

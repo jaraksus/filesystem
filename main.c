@@ -34,6 +34,31 @@ int main(int argc, char* argv[]) {
         } else if (strcmp(buf, "cd") == 0) {
             scanf("%2048s", buf);
             change_directory(current_path, buf, image_fd);
+        } else if (strcmp(buf, "touch") == 0) {
+            scanf("%2048s", buf);
+            touch(current_path, buf, image_fd);
+        } else if (strcmp(buf, "echo") == 0) {
+            char tmp;
+            scanf("%c", &tmp);
+            scanf("%[^\n]", buf);
+            char filename[50];
+            scanf("%50s", filename);
+
+            echo(current_path, filename, buf, false, image_fd);
+        } else if (strcmp(buf, "echoline") == 0) {
+            char tmp;
+            scanf("%c", &tmp);
+            scanf("%[^\n]", buf);
+            char filename[50];
+            scanf("%50s", filename);
+
+            echo(current_path, filename, buf, true, image_fd);
+        } else if (strcmp(buf, "cat") == 0) {
+            scanf("%2048s", buf);
+            cat(current_path, buf, image_fd);
+        } else if (strcmp(buf, "rm") == 0) {
+            scanf("%2048s", buf);
+            remove_file(current_path, buf, image_fd);
         }
         else {
             printf("unknown command\n");
