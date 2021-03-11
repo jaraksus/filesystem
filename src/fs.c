@@ -1,4 +1,5 @@
 #include "fs.h"
+#include "util.h"
 
 #include <stdio.h>
 #include <sys/types.h>
@@ -6,40 +7,11 @@
 #include <stdlib.h>
 #include <string.h>
 
+
 superblock fs_info;
 
 bool inodes_mask[MAX_INODE_NUM];
 bool blocks_mask[MAX_BLOCK_NUM];
-
-int read_all(int fd, void* buf, int count) {
-    int total = 0;
-    while (total < count) {
-        int cur = read(fd, buf + total, count - total);
-
-        if (cur == 0) {
-            return -1;
-        }
-
-        total += cur;
-    }
-
-    return 0;
-}
-
-int write_all(int fd, void* buf, int count) {
-    int total = 0;
-    while (total < count) {
-        int cur = write(fd, buf + total, count - total);
-
-        if (cur == 0) {
-            return -1;
-        }
-
-        total += cur;
-    }
-
-    return 0;
-}
 
 int get_block_size() {
     return fs_info.block_size;
