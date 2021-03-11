@@ -6,8 +6,10 @@
 #include <stdlib.h>
 #include <string.h>
 
-bool inodes_mask[INODE_NUM];
-bool blocks_mask[BLOCK_NUM];
+superblock fs_info;
+
+bool inodes_mask[MAX_INODE_NUM];
+bool blocks_mask[MAX_BLOCK_NUM];
 
 int read_all(int fd, void* buf, int count) {
     int total = 0;
@@ -39,16 +41,32 @@ int write_all(int fd, void* buf, int count) {
     return 0;
 }
 
+int get_block_size() {
+    return fs_info.block_size;
+}
+
+int get_block_num() {
+    return fs_info.block_num;
+}
+
+int get_inode_num() {
+    return fs_info.inode_num;
+}
+
 void move(int fd, int offset) {
     lseek(fd, offset, SEEK_SET);
 }
 
+void move_to_superblock(int fd) {
+    move(fd, 0);
+}
+
 void move_to_inode(int fd, int inode_id) {
-    move(fd, inode_id * sizeof(inode));
+    move(fd, fs_info.block_size + inode_id * sizeof(inode));
 }
 
 void move_to_block(int fd, int block_id) {
-    move(fd, INODE_NUM * sizeof(inode) + block_id * BLOCK_SIZE);
+    move(fd, fs_info.block_size + fs_info.inode_num * sizeof(inode) + block_id * fs_info.block_size);
 }
 
 void get_inode(inode* node, int inode_id, int image_fd) {
@@ -63,7 +81,7 @@ void save_inode(inode* node, int inode_id, int image_fd) {
 
 void read_block(void* buf, int block_id, int image_fd) {
     move_to_block(image_fd, block_id);
-    read_all(image_fd, buf, BLOCK_SIZE);
+    read_all(image_fd, buf, fs_info.block_size);
 }
 
 void read_block_by_inode_id(void* buf, int inode_id, int block_ind, int image_fd) {
@@ -73,7 +91,7 @@ void read_block_by_inode_id(void* buf, int inode_id, int block_ind, int image_fd
 }
 
 int init_inode(bool dir, int image_fd) {
-    for (int i = 0; i < INODE_NUM; ++i) {
+    for (int i = 0; i < fs_info.inode_num; ++i) {
         if (inodes_mask[i] == false) {
             inodes_mask[i] = true;
 
@@ -84,7 +102,7 @@ int init_inode(bool dir, int image_fd) {
             node.counter = 1;
 
             int blocks_found = 0;
-            for (int j = 0; j < BLOCK_NUM, blocks_found < 14; ++j) {
+            for (int j = 0; j < fs_info.block_num, blocks_found < 14; ++j) {
                 if (blocks_mask[j] == false) {
                     blocks_mask[j] = true;
                     node.blocks[blocks_found] = j;
@@ -111,13 +129,13 @@ int find_inode_id_by_dir(int dir_inode_id, char* filename, int image_fd) {
             break;
         }
         int cur = rem;
-        if (cur > BLOCK_SIZE) {
-            cur = BLOCK_SIZE;
+        if (cur > fs_info.block_size) {
+            cur = fs_info.block_size;
         }
 
         rem -= cur;
 
-        char block[BLOCK_SIZE];
+        char block[fs_info.block_size];
         read_block(block, node.blocks[i], image_fd);
 
         int total_read = 0;
@@ -165,7 +183,9 @@ int find_inode_id(char* path, int image_fd) {
 }
 
 void write_to_block(int block_id, int offset, void* buf, int count, int image_fd) {
-    move(image_fd, INODE_NUM * sizeof(inode) + block_id * BLOCK_SIZE + offset);
+    // move(image_fd, INODE_NUM * sizeof(inode) + block_id * BLOCK_SIZE + offset);
+    move_to_block(image_fd, block_id);
+    lseek(image_fd, offset, SEEK_CUR);
     write_all(image_fd, buf, count);
 }
 
@@ -173,8 +193,8 @@ void write_by_inode_id(int inode_id, void* buf, int count, int image_fd) {
     inode node;
     get_inode(&node, inode_id, image_fd);
 
-    int block_ind = node.size / BLOCK_SIZE;
-    int block_rem = BLOCK_SIZE - (node.size % BLOCK_SIZE);
+    int block_ind = node.size / fs_info.block_size;
+    int block_rem = fs_info.block_size - (node.size % fs_info.block_size);
 
     int total_wrote = 0;
     while (total_wrote < count) {
@@ -183,11 +203,11 @@ void write_by_inode_id(int inode_id, void* buf, int count, int image_fd) {
             can_write = block_rem;
         }
 
-        write_to_block(node.blocks[block_ind], BLOCK_SIZE - block_rem, buf + total_wrote, can_write, image_fd);
+        write_to_block(node.blocks[block_ind], fs_info.block_size - block_rem, buf + total_wrote, can_write, image_fd);
         total_wrote += can_write;
 
         block_ind++;
-        block_rem = BLOCK_SIZE;
+        block_rem = fs_info.block_size;
     }
 
     node.size += count;
@@ -198,7 +218,7 @@ void make_free(int inode_id, int parent_inode_id, int image_fd) {
     inode node;
     get_inode(&node, inode_id, image_fd);
 
-    char buffer[BLOCK_SIZE];
+    char buffer[fs_info.block_size];
 
     // Recursive delete strategy
     if (node.dir) {
@@ -209,7 +229,7 @@ void make_free(int inode_id, int parent_inode_id, int image_fd) {
             read_block_by_inode_id(buffer, inode_id, block_ind, image_fd);
 
             int current_read = 0;
-            while (total_read < node.size && current_read < BLOCK_SIZE) {
+            while (total_read < node.size && current_read < fs_info.block_size) {
                 memcpy(&record, buffer + current_read, sizeof(catalog_record));
                 total_read += sizeof(catalog_record);
                 current_read += sizeof(catalog_record);
@@ -223,16 +243,23 @@ void make_free(int inode_id, int parent_inode_id, int image_fd) {
         }
     }
 
+    node.counter--;
+    save_inode(&node, inode_id, image_fd);
+    for (int i = 0; i < 14; ++i) {
+        blocks_mask[node.blocks[i]] = false;
+    }
+    inodes_mask[inode_id] = false;
+
     // Deleting from parent record
     inode parent_node;
     get_inode(&parent_node, parent_inode_id, image_fd);
 
     catalog_record last_record;
-    int last_block_ind = parent_node.size / BLOCK_SIZE;
-    int last_block_offset = parent_node.size % BLOCK_SIZE;
+    int last_block_ind = parent_node.size / fs_info.block_size;
+    int last_block_offset = parent_node.size % fs_info.block_size;
     if (last_block_offset == 0) {
         read_block_by_inode_id(buffer, parent_inode_id, last_block_ind - 1, image_fd);
-        memcpy(&last_record, buffer + (BLOCK_SIZE - sizeof(catalog_record)), sizeof(catalog_record));
+        memcpy(&last_record, buffer + (fs_info.block_size - sizeof(catalog_record)), sizeof(catalog_record));
     } else {
         read_block_by_inode_id(buffer, parent_inode_id, last_block_ind, image_fd);
         memcpy(&last_record, buffer + (last_block_offset - sizeof(catalog_record)), sizeof(catalog_record));
@@ -247,7 +274,7 @@ void make_free(int inode_id, int parent_inode_id, int image_fd) {
             read_block_by_inode_id(buffer, parent_inode_id, block_ind, image_fd);
 
             int current_read = 0;
-            while (total_read < parent_node.size && current_read < BLOCK_SIZE) {
+            while (total_read < parent_node.size && current_read < fs_info.block_size) {
                 memcpy(&record, buffer + current_read, sizeof(catalog_record));
 
                 if (record.inode_id == inode_id) {
@@ -273,23 +300,48 @@ void make_free(int inode_id, int parent_inode_id, int image_fd) {
 
     parent_node.size -= sizeof(catalog_record);
     save_inode(&parent_node, parent_inode_id, image_fd);
-
-
-    for (int i = 0; i < 14; ++i) {
-        blocks_mask[node.blocks[i]] = false;
-    }
-    inodes_mask[inode_id] = false;
 }
 
 // *******************************************************************
 
 void prepare_image(int image_fd) {
-    int fs_size = INODE_NUM * sizeof(inode) + BLOCK_SIZE * BLOCK_NUM;
+    /*
+    #define BLOCK_SIZE 2048
+    #define BLOCK_NUM 1024
+    #define INODE_NUM 65536
+    */
+
+    fs_info.block_size = 2048;
+    fs_info.block_num = 1024;
+    fs_info.inode_num = 65536;
+
+    int fs_size = fs_info.block_size + fs_info.inode_num * sizeof(inode) + fs_info.block_size * fs_info.block_num;
     char* ptr = malloc(fs_size);
     memset(ptr, 0, fs_size);
     write_all(image_fd, ptr, fs_size);
 
+    move_to_superblock(image_fd);
+    write_all(image_fd, &fs_info, sizeof(superblock));
+
     int root_inode_id = init_inode(true, image_fd);
 
     free(ptr);
+}
+
+void load_fs(int image_fd) {
+    move_to_superblock(image_fd);
+    read_all(image_fd, &fs_info, sizeof(superblock));
+
+    inode node;
+    for (int i = 0; i < fs_info.inode_num; ++i) {
+        get_inode(&node, i, image_fd);
+        if (node.counter == 1) {
+            inodes_mask[i] = true;
+            for (int j = 0; j < 14; ++j) {
+                if (node.blocks[j] != -1) {
+                    blocks_mask[node.blocks[j]] = true;
+                }
+            }
+        }
+    }
 }

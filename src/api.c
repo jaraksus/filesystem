@@ -67,13 +67,13 @@ void list(char* path, int image_fd) {
             break;
         }
         int cur = rem;
-        if (cur > BLOCK_SIZE) {
-            cur = BLOCK_SIZE;
+        if (cur > get_block_size()) {
+            cur = get_block_size();
         }
 
         rem -= cur;
 
-        char block[BLOCK_SIZE];
+        char block[get_block_size()];
         read_block(block, node.blocks[i], image_fd);
 
         int total_read = 0;
@@ -103,7 +103,6 @@ void make_dir(char* path, char* dirname, int image_fd) {
     }
 
     int new_inode_id = init_inode(true, image_fd);
-
     if (new_inode_id == -1) {
         printf("Can't make directory. No free inodes\n");
         return;
@@ -209,10 +208,10 @@ void cat(char* path, char* filename, int image_fd) {
     int total_read = 0;
     int block_ind = 0;
     while (total_read < node.size) {
-        char current_buffer[BLOCK_SIZE];
+        char current_buffer[get_block_size()];
         read_block_by_inode_id(current_buffer, inode_id, block_ind, image_fd);
 
-        int can_read = BLOCK_SIZE;
+        int can_read = get_block_size();
         if (node.size - total_read < can_read) {
             can_read = node.size - total_read;
         }

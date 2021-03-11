@@ -11,6 +11,21 @@
 int image_fd;
 
 int main(int argc, char* argv[]) {
+    if (argc < 2) {
+        printf("image didn't be provided\n");
+        return 0;
+    }
+
+    bool new_fs = false;
+    if (argc > 2) {
+        if (strcmp(argv[2], "--new") != 0) {
+            printf("unknown option\n");
+            return 0;
+        } else {
+            new_fs = true;
+        }
+    }
+
     image_fd = open(argv[1], O_RDWR);
     char* buf = malloc(2048);
     memset(buf, 0, 2048);
@@ -18,11 +33,11 @@ int main(int argc, char* argv[]) {
     char current_path[2048];
     memset(current_path, 0, sizeof(current_path));
 
-    prepare_image(image_fd);
-
-    /*inode node;
-    get(&node, 0, image_fd);
-    printf("%d\n", node.size);*/
+    if (new_fs) {
+        prepare_image(image_fd);
+    } else {
+        load_fs(image_fd);
+    }
 
     show(current_path);
     while (scanf("%2048s", buf) != EOF) {

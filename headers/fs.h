@@ -4,9 +4,12 @@
 #include <stdbool.h>
 #include <stddef.h>
 
-#define BLOCK_SIZE 2048
-#define BLOCK_NUM 1024
-#define INODE_NUM 65536
+// #define BLOCK_SIZE 2048
+// #define BLOCK_NUM 1024
+// #define INODE_NUM 65536
+
+#define MAX_BLOCK_NUM 1024
+#define MAX_INODE_NUM 65536
 
 /*
 |----------|----------|
@@ -24,8 +27,18 @@ typedef struct inode_struct {
 
 typedef struct catalog_record_struct {
     int inode_id;
-    char name[20];
+    char name[28];
 } catalog_record;
+
+typedef struct superblock_struct {
+    int block_size;
+    int block_num;
+    int inode_num;
+} superblock;
+
+int get_block_size();
+int get_block_num();
+int get_inode_num();
 
 void move_to_inode(int fd, int inode_id);
 
@@ -50,5 +63,7 @@ void make_free(int inode_id, int parent_inode_id, int image_fd);
 // ********************************************************
 
 void prepare_image(int image_fd);
+
+void load_fs(int image_fd);
 
 #endif // FS_H_
