@@ -1,6 +1,6 @@
 rm -r tmp/
 mkdir tmp
 cd tmp
-cmake -DDEBUG=ON ../
+cmake -DDEBUG=OFF ../
 make
 cd ../
