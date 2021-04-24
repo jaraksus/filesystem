@@ -1,7 +1,3 @@
-//
-// Created by jarakcyc on 23.04.2021.
-//
-
 #include <stdio.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
@@ -11,6 +7,7 @@
 #include <stdbool.h>
 
 #include "network_util.h"
+#include "api.h"
 
 tcp_packet request;
 
@@ -35,13 +32,26 @@ void init_network() {
     }
 }
 
+void receive_current_path(int sock) {
+    tcp_packet server_packet;
+    server_packet.size = 0;
+    server_packet.buffer = NULL;
+
+    recv_packet(sock, &server_packet);
+    char buffer[2048];
+    read_string(&server_packet, 0, buffer);
+    show(buffer);
+
+    free(server_packet.buffer);
+}
+
 void handle_message_response(int sock) {
     tcp_packet server_response;
     server_response.size = 0;
     server_response.buffer = NULL;
 
     recv_packet(sock, &server_response);
-    char buffer[2048];
+    char buffer[65356];
     read_string(&server_response, 0, buffer);
     printf("%s", buffer);
 
@@ -105,6 +115,8 @@ int main() {
 
     char buf[2048];
     memset(buf, 0, 2048);
+
+    receive_current_path(sock);
 
     while (scanf("%2047s", buf) != EOF) {
         request.size = 0;
@@ -176,9 +188,11 @@ int main() {
             send_packet(sock, &request);
         } else {
             printf("unknown command\n");
+            continue;
         }
 
         free(request.buffer);
+        receive_current_path(sock);
     }
 
     close(sock);

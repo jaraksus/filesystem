@@ -7,6 +7,8 @@ if (DEBUG)
     set (CMAKE_LINKER_FLAGS "${CMAKE_LINKER_FLAGS} -fno-omit-frame-pointer -fsanitize=address")
 endif()
 
+find_package(Threads REQUIRED)
+
 set(SOURCE_EXE main.c)
 set(SERVER_SOURCE src/server.c)
 set(CLIENT_SOURCE src/client.c)
@@ -38,5 +40,7 @@ target_link_libraries(main fs)
 target_link_libraries(server network_util)
 target_link_libraries(server api)
 target_link_libraries(server fs)
+target_link_libraries(server Threads::Threads)
 
 target_link_libraries(client network_util)
+target_link_libraries(client api)

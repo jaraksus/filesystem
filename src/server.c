@@ -1,7 +1,3 @@
-//
-// Created by jarakcyc on 23.04.2021.
-//
-
 #include <stdio.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
@@ -10,6 +6,7 @@
 #include <unistd.h>
 #include <stdbool.h>
 #include <fcntl.h>
+#include <pthread.h>
 
 #include "network_util.h"
 
@@ -18,7 +15,7 @@
 
 int image_fd;
 char current_path[2048];
-char buffer[2048];
+char buffer[65356];
 
 int listener;
 struct sockaddr_in addr;
@@ -103,43 +100,18 @@ void handle_push_request(tcp_packet* packet) {
     push(current_path, src, dest, image_fd);
 }
 
-int main(int argc, char* argv[]) {
-    if (argc < 2) {
-        printf("image wasn't provided\n");
-        return 0;
-    }
+pthread_mutex_t mutex;
 
-    bool new_fs = false;
-    if (argc > 2) {
-        if (strcmp(argv[2], "--new") != 0) {
-            printf("unknown option\n");
-            return 0;
-        } else {
-            new_fs = true;
-        }
-    }
+void* session(void* arg) {
+    char session_current_path[2048];
+    memset(session_current_path, 0, 2048);
+    int sock = *((int*)arg);
 
-    image_fd = open(argv[1], O_RDWR);
-    if (image_fd == -1) {
-        printf("Can't find image to open\n");
-        return 0;
-    }
-
-    memset(current_path, 0, sizeof(current_path));
-
-    if (new_fs) {
-        prepare_image(image_fd);
-    } else {
-        load_fs(image_fd);
-    }
-
-    init_network();
-    printf("server listening on port: %d\n", MINIFS_PORT);
-
-    int sock = accept(listener, NULL, NULL);
-    printf("new connection\n");
+    printf("sock: %d\n", sock);
 
     while (1) {
+        message_response(sock, session_current_path);
+
         tcp_packet packet;
         packet.size = 0;
         packet.buffer = NULL;
@@ -149,6 +121,9 @@ int main(int argc, char* argv[]) {
             free(packet.buffer);
             break;
         }
+
+        pthread_mutex_lock(&mutex);
+        strcpy(current_path, session_current_path);
 
         int command_id;
         read_int(&packet, 0, &command_id);
@@ -186,8 +161,54 @@ int main(int argc, char* argv[]) {
         }
 
         free(packet.buffer);
+
+        strcpy(session_current_path, current_path);
+        printf("session_current_path after requery: %s\n", session_current_path);
+        pthread_mutex_unlock(&mutex);
     }
 
     close(sock);
+    free(arg);
+}
+
+int main(int argc, char* argv[]) {
+    bool new_fs = false;
+    if (argc > 1) {
+        if (strcmp(argv[1], "--new") != 0) {
+            printf("unknown option\n");
+            return 0;
+        } else {
+            new_fs = true;
+        }
+    }
+
+    image_fd = open("/dev/lkm_minifs", O_RDWR);
+    if (image_fd == -1) {
+        printf("Can't open device. Try to use sudo\n");
+        return 0;
+    }
+
+    memset(current_path, 0, sizeof(current_path));
+
+    if (new_fs) {
+        prepare_image(image_fd);
+    } else {
+        load_fs(image_fd);
+    }
+
+    init_network();
+    printf("server listening on port: %d\n", MINIFS_PORT);
+
+    pthread_mutex_init(&mutex, NULL);
+
+    while (1) {
+        int* sock = malloc(4);
+        *sock = accept(listener, NULL, NULL);
+        printf("new connection\n");
+        pthread_t thread_id;
+        pthread_create(&thread_id, NULL, session, (void *)sock);
+    }
+
+    pthread_mutex_destroy(&mutex);
 }
 

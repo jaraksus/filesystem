@@ -277,15 +277,9 @@ void make_free(int inode_id, int parent_inode_id, int image_fd) {
 // *******************************************************************
 
 void prepare_image(int image_fd) {
-    /*
-    #define BLOCK_SIZE 2048
-    #define BLOCK_NUM 1024
-    #define INODE_NUM 65536
-    */
-
-    fs_info.block_size = 2048;
-    fs_info.block_num = 1024;
-    fs_info.inode_num = 65536;
+    fs_info.block_size = 512;
+    fs_info.block_num = 512;
+    fs_info.inode_num = 32768;
 
     int fs_size = fs_info.block_size + fs_info.inode_num * sizeof(inode) + fs_info.block_size * fs_info.block_num;
     char* ptr = malloc(fs_size);
