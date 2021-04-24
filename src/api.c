@@ -15,12 +15,24 @@ void set_white_output() {
     printf("\033[0;37m");
 }
 
+int add_white_color_code(char* buf) {
+    return sprintf(buf, "\033[0;37m");
+}
+
 void set_blue_output() {
     printf("\033[0;34m");
 }
 
+int add_blue_color_code(char* buf) {
+    return sprintf(buf, "\033[0;34m");
+}
+
 void set_cyan_output() {
     printf("\033[0;36m");
+}
+
+int add_cyan_color_code(char* buf) {
+    return sprintf(buf, "\033[0;36m");
 }
 
 void set_purple_output() {
@@ -63,7 +75,7 @@ int list(char* path, int image_fd) {
     get_inode(&node, inode_id, image_fd);
 
     if (node.dir == false) {
-        printf("Something strange happened. This is not a directory");
+        printf("Something strange happened. This is not a directory\n");
         return -1;
     }
 
@@ -99,6 +111,52 @@ int list(char* path, int image_fd) {
     }
 
     return 0;
+}
+
+int list_output(char* path, int image_fd, char* out) {
+    int out_offset = 0;
+    int inode_id = find_inode_id(path, image_fd);
+
+    inode node;
+    get_inode(&node, inode_id, image_fd);
+
+    if (node.dir == false) {
+        out_offset += sprintf(out, "Something strange happened. This is not a directory\n");
+        return out_offset;
+    }
+
+    int rem = node.size;
+    for (int i = 0; i < 14; ++i) {
+        if (rem == 0) {
+            break;
+        }
+        int cur = rem;
+        if (cur > get_block_size()) {
+            cur = get_block_size();
+        }
+
+        rem -= cur;
+
+        char block[get_block_size()];
+        read_block(block, node.blocks[i], image_fd);
+
+        int total_read = 0;
+        while (total_read < cur) {
+            catalog_record record;
+            memcpy(&record, block + total_read, sizeof(catalog_record));
+            total_read += sizeof(catalog_record);
+
+            inode cur_node;
+            get_inode(&cur_node, record.inode_id, image_fd);
+            if (cur_node.dir) {
+                out_offset += add_blue_color_code(out + out_offset);
+            }
+            out_offset += sprintf(out + out_offset, "%s\n", record.name);
+            out_offset += add_white_color_code(out + out_offset);
+        }
+    }
+
+    return out_offset;
 }
 
 
@@ -244,6 +302,32 @@ int cat(char* path, char* filename, int image_fd) {
     memset(buffer, 0, node.size + 1);
     read_file(inode_id, buffer, image_fd);
     printf("%s\n", buffer);
+
+    free(buffer);
+
+    return 0;
+}
+
+int cat_output(char* path, char* filename, int image_fd, char* out) {
+    int cur_dir_inode_id = find_inode_id(path, image_fd);
+
+    int inode_id = find_inode_id_by_dir(cur_dir_inode_id, filename, image_fd);
+    if (inode_id == -1) {
+        sprintf(out, "No such file or directory\n");
+        return -1;
+    }
+
+    inode node;
+    get_inode(&node, inode_id, image_fd);
+    if (node.dir) {
+        sprintf(out, "Can't use cat to a directory\n");
+        return -1;
+    }
+
+    char* buffer = malloc(node.size + 1);
+    memset(buffer, 0, node.size + 1);
+    read_file(inode_id, buffer, image_fd);
+    sprintf(out, "%s\n", buffer);
 
     free(buffer);
 
